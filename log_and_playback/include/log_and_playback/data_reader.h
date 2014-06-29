@@ -47,6 +47,7 @@
 #include <log_and_playback/abstract_data_reader.h>
 #include <log_and_playback/bag_reader.h>
 #include <log_and_playback/dgclog_reader.h>
+#include <log_and_playback/kittireader.h>
 
 #include <stdr_velodyne/message_filter.h>
 #include <stdr_velodyne/pointcloud.h>
@@ -60,24 +61,26 @@ namespace log_and_playback
 class DataReader : public AbstractDataReader
 {
 public:
-  DataReader();
-  ~DataReader();
+    DataReader();
+    ~DataReader();
 
-  /// load the data from the logs. Optionally skip the first @param skip seconds.
-  void load(const std::vector< std::string > &logs, ros::Duration skip=ros::Duration(0));
+    /// load the data from the logs. Optionally skip the first @param skip seconds.
+    void load(const std::vector< std::string > &logs, ros::Duration skip=ros::Duration(0));
 
-  bool next();
-  bool ok() const { return reader_ && reader_->ok(); }
-  ros::Time time() const { ROS_ASSERT(reader_); return reader_->time(); }
+    bool next();
+    bool ok() const { return reader_ && reader_->ok(); }
+    ros::Time time() const { ROS_ASSERT(reader_); return reader_->time(); }
 
-  stdr_msgs::ApplanixPose::ConstPtr instantiateApplanixPose() const;
-  stdr_msgs::ApplanixGPS::ConstPtr instantiateApplanixGPS() const;
-  stdr_msgs::ApplanixRMS::ConstPtr instantiateApplanixRMS() const;
-  velodyne_msgs::VelodyneScan::ConstPtr instantiateVelodyneScans() const;
-  stdr_msgs::LadybugImages::ConstPtr instantiateLadybugImages() const;
-
+    stdr_msgs::ApplanixPose::ConstPtr instantiateApplanixPose() const;
+    stdr_msgs::ApplanixGPS::ConstPtr instantiateApplanixGPS() const;
+    stdr_msgs::ApplanixRMS::ConstPtr instantiateApplanixRMS() const;
+    velodyne_msgs::VelodyneScan::ConstPtr instantiateVelodyneScans() const;
+    stdr_velodyne::PointCloudPtr instantiateVelodyneSpins() const;
+    stdr_msgs::LadybugImages::ConstPtr instantiateLadybugImages() const;
+    bool kitti_;
 private:
-  AbstractDataReader * reader_;
+    AbstractDataReader * reader_;
+
 };
 
 /** A TransformListener that is convenient to use with bags.
@@ -88,25 +91,25 @@ private:
 class BagTFListener : public tf::TransformerHelper
 {
 public:
-  BagTFListener() : broadcast_(false) {}
-  void broadcast() { broadcast_ = true; }
+    BagTFListener() : broadcast_(false) {}
+    void broadcast() { broadcast_ = true; }
 
-  void addApplanixPose(const stdr_msgs::ApplanixPose &);
-  void addTFMsg(const tf::tfMessage & msg);
+    void addApplanixPose(const stdr_msgs::ApplanixPose &);
+    void addTFMsg(const tf::tfMessage & msg);
 
-  /// Adds a static transform to the tree. Time stamp is irrelevant.
-  /// Note: Static transforms will be added into the tree each time it is updated,
-  /// which is probably too often...
-  void addStaticTransform(const tf::StampedTransform &);
+    /// Adds a static transform to the tree. Time stamp is irrelevant.
+    /// Note: Static transforms will be added into the tree each time it is updated,
+    /// which is probably too often...
+    void addStaticTransform(const tf::StampedTransform &);
 
 private:
-  std::vector< tf::StampedTransform > static_transforms_;
-  bool broadcast_;
-  tf::TransformBroadcaster broadcaster_;
-  localize::ApplanixTransformer app_trans_;
-  localize::FakeLocalizer fake_localizer_;
+    std::vector< tf::StampedTransform > static_transforms_;
+    bool broadcast_;
+    tf::TransformBroadcaster broadcaster_;
+    localize::ApplanixTransformer app_trans_;
+    localize::FakeLocalizer fake_localizer_;
 
-  void handleStaticTransforms(const ros::Time & stamp);
+    void handleStaticTransforms(const ros::Time & stamp);
 };
 
 
@@ -114,76 +117,77 @@ class SpinReader
 {
 public:
 
-  /** Creates an empty spin reader.
+    /** Creates an empty spin reader.
    *
    * It needs to be filled with a DataReader, either by loading some data files
    * using the load function, or by hooking an external data reader with the
    * set data reader function.
    */
-  SpinReader();
+    SpinReader();
 
-  ~SpinReader();
+    ~SpinReader();
 
-  /** Hook with an external data reader.
+    /** Hook with an external data reader.
    *
    * Any previous data reader is discarded.
    */
-  void setDataReader(AbstractDataReader &);
+    void setDataReader(AbstractDataReader &);
 
-  /// Removes the data reader, deleting it if it's not an external one
-  void unsetDataReader();
+    /// Removes the data reader, deleting it if it's not an external one
+    void unsetDataReader();
 
-  /** Loads some data files.
+    /** Loads some data files.
    *
    * Constructs a new data reader internally.
    * If a data reader is already set it is discarded first.
    *
    * Optionally skip the first @param skip seconds.
    */
-  void load(const std::vector< std::string > &logs, ros::Duration skip=ros::Duration(0));
+    void load(const std::vector< std::string > &logs, ros::Duration skip=ros::Duration(0));
 
-  /// Returns the current spin
-  stdr_velodyne::PointCloudConstPtr getSpin() const;
+    /// Returns the current spin
+    stdr_velodyne::PointCloudConstPtr getSpin() const;
 
-  bool prevSpin();
-  bool nextSpin();
+    bool prevSpin();
+    bool nextSpin();
 
-  const BagTFListener & tfListener() const { return tf_listener_; }
-  BagTFListener & tfListener() { return tf_listener_; }
+    const BagTFListener & tfListener() const { return tf_listener_; }
+    BagTFListener & tfListener() { return tf_listener_; }
 
 
-  static void addOptions(boost::program_options::options_description&);
-  static void addOptions(boost::program_options::positional_options_description&);
+    static void addOptions(boost::program_options::options_description&);
+    static void addOptions(boost::program_options::positional_options_description&);
 
-  /// loads the calibration file, from the option in vm if set,
-  /// otherwise from rosparam. Throws a runtime_error if none of them is set,
-  /// or if it fails to load.
-  virtual void loadCalibrationFromProgramOptions(const boost::program_options::variables_map & vm);
+    /// loads the calibration file, from the option in vm if set,
+    /// otherwise from rosparam. Throws a runtime_error if none of them is set,
+    /// or if it fails to load.
+    virtual void loadCalibrationFromProgramOptions(const boost::program_options::variables_map & vm);
 
-  /// loads the velodyne's TFM, from the option in vm if set,
-  /// otherwise from rosparam. Throws a runtime_error if none of them is set.
-  virtual void loadTFMFromProgramOptions(const boost::program_options::variables_map & vm);
+    /// loads the velodyne's TFM, from the option in vm if set,
+    /// otherwise from rosparam. Throws a runtime_error if none of them is set.
+    virtual void loadTFMFromProgramOptions(const boost::program_options::variables_map & vm);
 
 
 private:
-  bool do_I_own_the_data_reader_;
-  AbstractDataReader * data_reader_;
+    bool do_I_own_the_data_reader_;
+    AbstractDataReader * data_reader_;
+    bool kitti_;
 
-  stdr_velodyne::SpinCollector spin_collector_; //< buffer to get full spins
-  stdr_velodyne::PointCloudPtr current_spin_;   //< current spin
+    stdr_velodyne::SpinCollector spin_collector_; //< buffer to get full spins
+    stdr_velodyne::PointCloudPtr current_spin_;   //< current spin
 
-  BagTFListener tf_listener_;
+    BagTFListener tf_listener_;
 
-  // a queue to hold the spin messages until a transform is available
-  std::queue< stdr_velodyne::PointCloudConstPtr > spinQ_;
+    // a queue to hold the spin messages until a transform is available
+    std::queue< stdr_velodyne::PointCloudConstPtr > spinQ_;
 
-  /// static config instance
-  stdr_velodyne::Configuration::Ptr config_;
+    /// static config instance
+    stdr_velodyne::Configuration::Ptr config_;
 
-  stdr_velodyne::PacketToPcd packet2pcd_convertor_;
+    stdr_velodyne::PacketToPcd packet2pcd_convertor_;
 
-  /// Check whether spins in the Q can be transformed to the smooth frame.
-  stdr_velodyne::PointCloudPtr processSpinQueue();
+    /// Check whether spins in the Q can be transformed to the smooth frame.
+    stdr_velodyne::PointCloudPtr processSpinQueue();
 };
 
 } //namespace log_and_playback
